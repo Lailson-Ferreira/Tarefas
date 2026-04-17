@@ -436,4 +436,508 @@
       <button class="filter-btn" data-filter="feitas">Feitas</button>
       <button class="filter-btn" data-filter="alta">🔴 Alta</button>
       <button class="filter-btn" data-filter="media">🟡 Média</button>
-    
+      <button class="filter-btn" data-filter="baixa">🟢 Baixa</button>
+    </div>
+
+    <div class="input-area">
+      <div class="input-row">
+        <input
+          class="task-input"
+          id="taskInput"
+          type="text"
+          placeholder="Nova tarefa… pressione Enter para adicionar"
+          autocomplete="off"
+          maxlength="200"
+        />
+        <button class="add-btn" id="addTaskBtn" title="Adicionar">+</button>
+      </div>
+      <div class="meta-row">
+        <select class="meta-select" id="prioritySelect">
+          <option value="media">🟡 Média</option>
+          <option value="alta">🔴 Alta</option>
+          <option value="baixa">🟢 Baixa</option>
+        </select>
+        <input class="meta-date" id="dueDateInput" type="date" title="Data de vencimento" />
+      </div>
+    </div>
+
+    <div class="section-head">Tarefas</div>
+    <div class="task-list" id="taskList"></div>
+    <div class="empty" id="emptyState">
+      <span class="empty-icon">📋</span>
+      Nenhuma tarefa encontrada.<br>Que tal adicionar algo novo?
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRMAR EXCLUSÃO -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Excluir quadro?</div>
+    <div class="modal-body"  id="modalBody">Todas as tarefas deste quadro serão apagadas. Esta ação não pode ser desfeita.</div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-cancel" id="modalCancel">Cancelar</button>
+      <button class="modal-btn modal-btn-danger" id="modalConfirm">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════
+let boards = JSON.parse(localStorage.getItem('tf_boards') || '[]');
+let tasks  = JSON.parse(localStorage.getItem('tf_tasks')  || '{}');
+
+let activeBoardId        = null;
+let taskFilter           = 'todas';
+let dragSrc              = null;
+let deferredInstall      = null;
+let pendingDeleteBoardId = null;
+
+const COLORS = ['#2563eb','#16a34a','#dc2626','#d97706','#7c3aed','#db2777','#0891b2','#374151'];
+let pickedColor = COLORS[0];
+
+// ════════════════════════════════════════════
+// PERSIST
+// ════════════════════════════════════════════
+function saveBoards() { localStorage.setItem('tf_boards', JSON.stringify(boards)); }
+function saveTasks()  { localStorage.setItem('tf_tasks',  JSON.stringify(tasks)); }
+function getBoardTasks(bid) { return tasks[bid] || []; }
+function setBoardTasks(bid, arr) { tasks[bid] = arr; saveTasks(); }
+
+// ════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtDate(s) { const [,m,d] = s.split('-'); return `${d}/${m}`; }
+
+function showToast(msg, ms = 2000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+// ════════════════════════════════════════════
+// DATES
+// ════════════════════════════════════════════
+const now = new Date();
+const dateStr = now.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'short', year:'numeric' });
+document.getElementById('dateStrBoards').textContent = dateStr;
+document.getElementById('dateStrTasks').textContent  = dateStr;
+document.getElementById('dueDateInput').min = now.toISOString().split('T')[0];
+
+// ════════════════════════════════════════════
+// SCREEN SWITCHING
+// ════════════════════════════════════════════
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen' + name).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+// ════════════════════════════════════════════
+// COLOR SWATCHES
+// ════════════════════════════════════════════
+function renderSwatches() {
+  const wrap = document.getElementById('colorSwatches');
+  wrap.innerHTML = '';
+  COLORS.forEach(c => {
+    const s = document.createElement('div');
+    s.className = 'swatch' + (c === pickedColor ? ' picked' : '');
+    s.style.background = c;
+    s.title = c;
+    s.addEventListener('click', () => { pickedColor = c; renderSwatches(); });
+    wrap.appendChild(s);
+  });
+}
+renderSwatches();
+
+// ════════════════════════════════════════════
+// BOARDS RENDER
+// ════════════════════════════════════════════
+function renderBoards() {
+  const grid = document.getElementById('boardsGrid');
+  grid.innerHTML = '';
+
+  if (!boards.length) {
+    grid.innerHTML = `<div class="no-boards">
+      <span class="no-boards-icon">🗂️</span>
+      Nenhum quadro ainda.<br>Crie seu primeiro quadro acima!
+    </div>`;
+    return;
+  }
+
+  boards.forEach(board => {
+    const tArr  = getBoardTasks(board.id);
+    const total = tArr.length;
+    const done  = tArr.filter(t => t.done).length;
+    const pct   = total ? Math.round((done / total) * 100) : 0;
+
+    const card = document.createElement('div');
+    card.className = 'board-card';
+    card.style.setProperty('--board-color', board.color);
+    card.dataset.id = board.id;
+
+    card.innerHTML = `
+      <div class="board-card-header">
+        <div class="board-card-name">${esc(board.name)}</div>
+        <button class="board-card-delete" data-bid="${board.id}" title="Excluir quadro">✕</button>
+      </div>
+      <div class="board-card-meta">${total} tarefa${total !== 1 ? 's' : ''} · ${pct}% concluída${pct !== 1 ? 's' : ''}</div>
+      <div class="board-card-progress-track">
+        <div class="board-card-progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="board-card-footer">
+        <span class="board-stat" style="color:var(--green)">${done} feita${done !== 1 ? 's' : ''}</span>
+        <span class="board-stat-sep">·</span>
+        <span class="board-stat" style="color:var(--red)">${total - done} aberta${(total-done) !== 1 ? 's' : ''}</span>
+      </div>
+    `;
+
+    card.addEventListener('click', e => {
+      if (e.target.closest('.board-card-delete')) return;
+      openBoard(board.id);
+    });
+
+    card.querySelector('.board-card-delete').addEventListener('click', e => {
+      e.stopPropagation();
+      openDeleteModal(board.id, board.name);
+    });
+
+    grid.appendChild(card);
+  });
+}
+
+// ════════════════════════════════════════════
+// ADD BOARD
+// ════════════════════════════════════════════
+function addBoard() {
+  const inp  = document.getElementById('boardNameInput');
+  const name = inp.value.trim();
+  if (!name) { inp.focus(); return; }
+
+  boards.unshift({ id: Date.now(), name, color: pickedColor, created: Date.now() });
+  saveBoards();
+  renderBoards();
+  inp.value = '';
+  showToast('🗂️ Quadro criado!');
+}
+
+document.getElementById('addBoardBtn').addEventListener('click', addBoard);
+document.getElementById('boardNameInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addBoard();
+});
+
+// ════════════════════════════════════════════
+// DELETE BOARD
+// ════════════════════════════════════════════
+function openDeleteModal(bid, name) {
+  pendingDeleteBoardId = bid;
+  document.getElementById('modalTitle').textContent = `Excluir "${name}"?`;
+  document.getElementById('modalBody').textContent  =
+    'Todas as tarefas deste quadro serão apagadas. Esta ação não pode ser desfeita.';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+document.getElementById('modalCancel').addEventListener('click', () => {
+  document.getElementById('modalOverlay').classList.remove('open');
+  pendingDeleteBoardId = null;
+});
+
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalOverlay')) {
+    document.getElementById('modalOverlay').classList.remove('open');
+    pendingDeleteBoardId = null;
+  }
+});
+
+document.getElementById('modalConfirm').addEventListener('click', () => {
+  if (!pendingDeleteBoardId) return;
+  boards = boards.filter(b => b.id !== pendingDeleteBoardId);
+  delete tasks[pendingDeleteBoardId];
+  saveBoards(); saveTasks();
+  renderBoards();
+  document.getElementById('modalOverlay').classList.remove('open');
+  pendingDeleteBoardId = null;
+  showToast('🗑 Quadro excluído');
+});
+
+// ════════════════════════════════════════════
+// OPEN BOARD
+// ════════════════════════════════════════════
+function openBoard(bid) {
+  activeBoardId = bid;
+  taskFilter    = 'todas';
+
+  const board = boards.find(b => b.id === bid);
+  document.getElementById('boardTitleText').textContent    = board.name;
+  document.getElementById('boardColorDot').style.background = board.color;
+
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.filter-btn[data-filter="todas"]').classList.add('active');
+
+  renderTasks();
+  showScreen('Tasks');
+}
+
+document.getElementById('backBtn').addEventListener('click', () => {
+  activeBoardId = null;
+  renderBoards();
+  showScreen('Boards');
+});
+
+// ════════════════════════════════════════════
+// TASK STATS
+// ════════════════════════════════════════════
+function updateStats() {
+  const tArr  = getBoardTasks(activeBoardId);
+  const done  = tArr.filter(t => t.done).length;
+  const total = tArr.length;
+  const pct   = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById('statDone').textContent    = done;
+  document.getElementById('statPend').textContent    = total - done;
+  document.getElementById('statTotal').textContent   = total;
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+// ════════════════════════════════════════════
+// TASK FILTER
+// ════════════════════════════════════════════
+function getFiltered() {
+  const tArr = getBoardTasks(activeBoardId);
+  if (taskFilter === 'abertas') return tArr.filter(t => !t.done);
+  if (taskFilter === 'feitas')  return tArr.filter(t => t.done);
+  if (taskFilter === 'alta')    return tArr.filter(t => t.priority === 'alta');
+  if (taskFilter === 'media')   return tArr.filter(t => t.priority === 'media');
+  if (taskFilter === 'baixa')   return tArr.filter(t => t.priority === 'baixa');
+  return tArr;
+}
+
+// ════════════════════════════════════════════
+// RENDER TASKS
+// ════════════════════════════════════════════
+function renderTasks() {
+  const list    = document.getElementById('taskList');
+  const empty   = document.getElementById('emptyState');
+  const visible = getFiltered();
+  updateStats();
+  list.innerHTML = '';
+
+  if (!visible.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  const labels = { alta:'Alta', media:'Média', baixa:'Baixa' };
+
+  visible.forEach(task => {
+    const card = document.createElement('div');
+    card.className = 'task-card' + (task.done ? ' done' : '');
+    card.dataset.id       = task.id;
+    card.dataset.priority = task.priority;
+    card.draggable        = true;
+
+    const dateTag = task.due
+      ? `<span class="tag tag-date">📅 ${fmtDate(task.due)}</span>`
+      : '';
+
+    card.innerHTML = `
+      <div class="check-wrap" title="Marcar como concluída">
+        <span class="check-icon">✓</span>
+      </div>
+      <div class="task-body">
+        <div class="task-text">${esc(task.text)}</div>
+        <div class="task-tags">
+          <span class="tag tag-${task.priority}">${labels[task.priority]}</span>
+          ${dateTag}
+        </div>
+      </div>
+      <div class="task-actions">
+        <button class="action-btn" data-action="delete" title="Excluir">✕</button>
+      </div>
+    `;
+
+    card.querySelector('.check-wrap').addEventListener('click', e => {
+      e.stopPropagation();
+      toggleDone(task.id);
+    });
+    card.querySelector('[data-action="delete"]').addEventListener('click', e => {
+      e.stopPropagation();
+      deleteTask(task.id, card);
+    });
+    card.addEventListener('dragstart', onDragStart);
+    card.addEventListener('dragover',  onDragOver);
+    card.addEventListener('drop',      onDrop);
+    card.addEventListener('dragend',   onDragEnd);
+
+    list.appendChild(card);
+  });
+}
+
+// ════════════════════════════════════════════
+// TASK CRUD
+// ════════════════════════════════════════════
+function addTask() {
+  const inp  = document.getElementById('taskInput');
+  const text = inp.value.trim();
+  if (!text) { inp.focus(); return; }
+  const tArr = getBoardTasks(activeBoardId);
+  tArr.unshift({
+    id: Date.now(), text, done: false,
+    priority: document.getElementById('prioritySelect').value,
+    due: document.getElementById('dueDateInput').value,
+    created: Date.now()
+  });
+  setBoardTasks(activeBoardId, tArr);
+  renderTasks();
+  inp.value = '';
+  document.getElementById('dueDateInput').value = '';
+  showToast('✔ Tarefa adicionada!');
+}
+
+function toggleDone(id) {
+  const tArr = getBoardTasks(activeBoardId);
+  const t    = tArr.find(t => t.id === id);
+  if (!t) return;
+  t.done = !t.done;
+  setBoardTasks(activeBoardId, tArr);
+  renderTasks();
+  showToast(t.done ? '✔ Concluída!' : '↩ Reaberta');
+}
+
+function deleteTask(id, card) {
+  card.style.transition = 'opacity .25s, transform .25s';
+  card.style.opacity    = '0';
+  card.style.transform  = 'translateX(20px)';
+  setTimeout(() => {
+    const tArr = getBoardTasks(activeBoardId).filter(t => t.id !== id);
+    setBoardTasks(activeBoardId, tArr);
+    renderTasks();
+    showToast('🗑 Excluída');
+  }, 250);
+}
+
+// ════════════════════════════════════════════
+// DRAG & DROP
+// ════════════════════════════════════════════
+function onDragStart(e) {
+  dragSrc = this;
+  this.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.task-card').forEach(c => c.classList.remove('drag-over'));
+  if (this !== dragSrc) this.classList.add('drag-over');
+}
+function onDrop(e) {
+  e.preventDefault();
+  if (this === dragSrc) return;
+  const tArr = getBoardTasks(activeBoardId);
+  const si   = tArr.findIndex(t => t.id === +dragSrc.dataset.id);
+  const di   = tArr.findIndex(t => t.id === +this.dataset.id);
+  if (si < 0 || di < 0) return;
+  const [m] = tArr.splice(si, 1);
+  tArr.splice(di, 0, m);
+  setBoardTasks(activeBoardId, tArr);
+  renderTasks();
+}
+function onDragEnd() {
+  document.querySelectorAll('.task-card').forEach(c => c.classList.remove('dragging','drag-over'));
+}
+
+// ════════════════════════════════════════════
+// FILTER BUTTONS
+// ════════════════════════════════════════════
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    taskFilter = btn.dataset.filter;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderTasks();
+  });
+});
+
+document.getElementById('addTaskBtn').addEventListener('click', addTask);
+document.getElementById('taskInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addTask();
+});
+
+// ════════════════════════════════════════════
+// PWA INSTALL
+// ════════════════════════════════════════════
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstall = e;
+  document.getElementById('installBannerBoards').classList.add('visible');
+});
+document.getElementById('installBtnBoards').addEventListener('click', async () => {
+  if (!deferredInstall) return;
+  deferredInstall.prompt();
+  const { outcome } = await deferredInstall.userChoice;
+  if (outcome === 'accepted') showToast('🎉 App instalado!');
+  deferredInstall = null;
+  document.getElementById('installBannerBoards').classList.remove('visible');
+});
+document.getElementById('dismissInstallBoards').addEventListener('click', () => {
+  document.getElementById('installBannerBoards').classList.remove('visible');
+});
+window.addEventListener('appinstalled', () => showToast('🎉 Instalado com sucesso!'));
+
+// ════════════════════════════════════════════
+// SERVICE WORKER
+// ════════════════════════════════════════════
+(async () => {
+  if (!('serviceWorker' in navigator)) return;
+  const sw = `const C='tf-v2';self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['./'])));self.skipWaiting();});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))));self.clients.claim();});self.addEventListener('fetch',e=>{e.respondWith(caches.match(e.request).then(c=>{if(c)return c;return fetch(e.request).then(r=>{if(!r||r.status!==200||r.type==='opaque')return r;const cl=r.clone();caches.open(C).then(ch=>ch.put(e.request,cl));return r;}).catch(()=>caches.match('./'));}));});`;
+  try { await navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'text/javascript'}))); } catch(e) {}
+})();
+
+// ════════════════════════════════════════════
+// MANIFEST
+// ════════════════════════════════════════════
+(() => {
+  const m = {name:'TaskFlow',short_name:'TaskFlow',start_url:'./',display:'standalone',background_color:'#ffffff',theme_color:'#2563eb',icons:[{src:"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%232563eb'/><text x='96' y='135' text-anchor='middle' font-size='90' font-family='Arial' fill='white'>✔</text></svg>",sizes:'192x192',type:'image/svg+xml'}]};
+  const link = document.createElement('link');
+  link.rel = 'manifest';
+  link.href = URL.createObjectURL(new Blob([JSON.stringify(m)],{type:'application/manifest+json'}));
+  document.head.appendChild(link);
+})();
+
+// ════════════════════════════════════════════
+// SEED (primeira visita)
+// ════════════════════════════════════════════
+if (!boards.length) {
+  boards = [
+    { id: 1001, name: 'Trabalho',          color: '#2563eb', created: Date.now() },
+    { id: 1002, name: 'Estudos',           color: '#7c3aed', created: Date.now() },
+    { id: 1003, name: 'Projetos Pessoais', color: '#16a34a', created: Date.now() },
+  ];
+  tasks = {
+    1001: [
+      { id: 2001, text: 'Revisar relatório mensal',      done: false, priority: 'alta',  due: '', created: Date.now() },
+      { id: 2002, text: 'Responder e-mails pendentes',   done: true,  priority: 'media', due: '', created: Date.now() },
+    ],
+    1002: [
+      { id: 2003, text: 'Estudar JavaScript avançado',   done: false, priority: 'media', due: '', created: Date.now() },
+    ],
+    1003: [
+      { id: 2004, text: 'Bem-vindo! Clique em um quadro para ver as tarefas.', done: false, priority: 'baixa', due: '', created: Date.now() },
+    ],
+  };
+  saveBoards(); saveTasks();
+}
+
+// ════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════
+renderBoards();
+</script>
+</body>
+</html>
