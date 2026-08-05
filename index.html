@@ -110,6 +110,39 @@
       border-radius: 99px; transition: width .55s cubic-bezier(.22,1,.36,1); width: 0%;
     }
 
+    /* ── DAY NAV ──────────────────────────────────────────── */
+    .day-nav {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: var(--r); padding: 10px 12px; margin-bottom: 18px;
+    }
+    .day-nav-btn {
+      background: var(--bg); border: 1.5px solid var(--border); border-radius: var(--r-sm);
+      width: 32px; height: 32px; flex-shrink: 0; cursor: pointer; font-size: 15px; font-weight: 700;
+      color: var(--text-mid); display: grid; place-items: center; transition: all .15s;
+    }
+    .day-nav-btn:hover { border-color: var(--accent); color: var(--accent); background: #eff6ff; }
+    .day-nav-mid { flex: 1; text-align: center; min-width: 0; cursor: pointer; }
+    .day-nav-date {
+      font-size: 14px; font-weight: 800; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .day-nav-date.is-today { color: var(--accent); }
+    .day-nav-sub { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+    .day-today-btn {
+      font-family: var(--font); font-size: 11px; font-weight: 700;
+      background: var(--bg); border: 1.5px solid var(--border); border-radius: 99px;
+      padding: 5px 11px; cursor: pointer; color: var(--text-mid); flex-shrink: 0; transition: all .15s;
+      white-space: nowrap;
+    }
+    .day-today-btn:hover { border-color: var(--accent); color: var(--accent); background: #eff6ff; }
+    .day-today-btn:disabled { opacity: .35; cursor: default; pointer-events: none; }
+    .day-nav-badge {
+      background: var(--yellow); color: #fff; font-size: 10px; font-weight: 800;
+      border-radius: 99px; padding: 2px 7px; margin-left: 6px; display: none;
+    }
+    .day-nav-badge.show { display: inline-block; }
+
     /* ── FILTERS ──────────────────────────────────────────── */
     .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
     .filter-btn {
@@ -274,12 +307,15 @@
 
     .board-card-header { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
     .board-card-name   { font-weight:800; font-size:15px; color:var(--text); line-height:1.3; }
-    .board-card-delete {
+    .board-card-actions { display:flex; gap:2px; flex-shrink:0; opacity:0; transition:opacity .15s; }
+    .board-card:hover .board-card-actions { opacity:1; }
+    @media(max-width:480px){ .board-card-actions{opacity:1;} }
+    .board-card-edit, .board-card-delete {
       background:transparent; border:none; cursor:pointer;
-      color:var(--text-dim); font-size:13px; padding:2px; opacity:0;
-      transition:opacity .15s, color .12s; flex-shrink:0; margin-top:1px;
+      color:var(--text-dim); font-size:13px; padding:2px 4px;
+      transition:color .12s; flex-shrink:0; margin-top:1px;
     }
-    .board-card:hover .board-card-delete { opacity:1; }
+    .board-card-edit:hover { color:var(--accent); }
     .board-card-delete:hover { color:var(--red); }
 
     .board-card-meta { font-size:12px; color:var(--text-dim); }
@@ -334,6 +370,20 @@
     .modal-btn-cancel:hover { border-color:var(--accent); color:var(--accent); }
     .modal-btn-danger { background:var(--red); color:#fff; }
     .modal-btn-danger:hover { background:#b91c1c; }
+    .modal-btn-primary { background:var(--accent); color:#fff; }
+    .modal-btn-primary:hover { background:var(--accent-h); }
+    .modal-field { margin-bottom:14px; }
+    .modal-field:last-of-type { margin-bottom:0; }
+    .modal-label {
+      display:block; font-size:11px; font-weight:700; color:var(--text-dim);
+      text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px;
+    }
+    .modal-input, .modal-select {
+      width:100%; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r-sm);
+      font-family:var(--font); font-size:14px; color:var(--text); padding:9px 11px; outline:none;
+      transition:border-color .15s;
+    }
+    .modal-input:focus, .modal-select:focus { border-color:var(--accent); }
 
     /* ── TOAST ────────────────────────────────────────────── */
     .toast {
@@ -420,9 +470,19 @@
       </div>
     </header>
 
+    <div class="day-nav">
+      <button class="day-nav-btn" id="dayPrevBtn" title="Dia anterior">‹</button>
+      <div class="day-nav-mid" id="dayNavMid" title="Voltar para hoje">
+        <div class="day-nav-date" id="dayNavDate">Hoje</div>
+        <div class="day-nav-sub" id="dayNavSub">—</div>
+      </div>
+      <button class="day-nav-btn" id="dayNextBtn" title="Próximo dia">›</button>
+      <button class="day-today-btn" id="dayTodayBtn">Hoje<span class="day-nav-badge" id="dayNavBadge">0</span></button>
+    </div>
+
     <div class="progress-wrap">
       <div class="progress-label">
-        <span>Progresso</span>
+        <span>Progresso do dia</span>
         <span id="progressPct">0%</span>
       </div>
       <div class="progress-track">
@@ -457,11 +517,11 @@
           <option value="alta">🔴 Alta</option>
           <option value="baixa">🟢 Baixa</option>
         </select>
-        <input class="meta-date" id="dueDateInput" type="date" title="Data de vencimento" />
+        <span class="meta-select" id="addForLabel" style="cursor:default;">Adicionar para: hoje</span>
       </div>
     </div>
 
-    <div class="section-head">Tarefas</div>
+    <div class="section-head" id="taskListHead">Tarefas</div>
     <div class="task-list" id="taskList"></div>
     <div class="empty" id="emptyState">
       <span class="empty-icon">📋</span>
@@ -482,6 +542,48 @@
   </div>
 </div>
 
+<!-- MODAL EDITAR QUADRO -->
+<div class="modal-overlay" id="editBoardOverlay">
+  <div class="modal">
+    <div class="modal-title">Editar quadro</div>
+    <div class="modal-field">
+      <label class="modal-label" for="editBoardNameInput">Nome</label>
+      <input class="modal-input" id="editBoardNameInput" type="text" maxlength="60" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Cor</label>
+      <div class="color-swatches" id="editBoardColorSwatches"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-cancel" id="editBoardCancel">Cancelar</button>
+      <button class="modal-btn modal-btn-primary" id="editBoardSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR TAREFA -->
+<div class="modal-overlay" id="editTaskOverlay">
+  <div class="modal">
+    <div class="modal-title">Editar tarefa</div>
+    <div class="modal-field">
+      <label class="modal-label" for="editTaskTextInput">Descrição</label>
+      <input class="modal-input" id="editTaskTextInput" type="text" maxlength="200" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label class="modal-label" for="editTaskPrioritySelect">Prioridade</label>
+      <select class="modal-select" id="editTaskPrioritySelect">
+        <option value="media">🟡 Média</option>
+        <option value="alta">🔴 Alta</option>
+        <option value="baixa">🟢 Baixa</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-cancel" id="editTaskCancel">Cancelar</button>
+      <button class="modal-btn modal-btn-primary" id="editTaskSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -497,9 +599,13 @@ let taskFilter           = 'todas';
 let dragSrc              = null;
 let deferredInstall      = null;
 let pendingDeleteBoardId = null;
+let currentViewDate      = todayISO();
 
 const COLORS = ['#2563eb','#16a34a','#dc2626','#d97706','#7c3aed','#db2777','#0891b2','#374151'];
 let pickedColor = COLORS[0];
+let editPickedColor = COLORS[0];
+let pendingEditBoardId = null;
+let pendingEditTaskId  = null;
 
 // ════════════════════════════════════════════
 // PERSIST
@@ -514,6 +620,44 @@ function setBoardTasks(bid, arr) { tasks[bid] = arr; saveTasks(); }
 // ════════════════════════════════════════════
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtDate(s) { const [,m,d] = s.split('-'); return `${d}/${m}`; }
+
+// ════════════════════════════════════════════
+// DATE HELPERS (gerenciamento por dia)
+// ════════════════════════════════════════════
+function toISO(d) {
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function todayISO() { return toISO(new Date()); }
+function addDaysISO(iso, n) {
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  dt.setDate(dt.getDate() + n);
+  return toISO(dt);
+}
+function fmtDayLabel(iso) {
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  return dt.toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'short' });
+}
+
+// ════════════════════════════════════════════
+// MIGRAÇÃO / ROLLOVER — tarefas não cumpridas vão para o dia atual
+// ════════════════════════════════════════════
+function rolloverBoard(bid) {
+  const today = todayISO();
+  const tArr = getBoardTasks(bid);
+  let moved = 0;
+  tArr.forEach(t => {
+    if (!t.date) t.date = t.created ? toISO(new Date(t.created)) : today; // migração de dados antigos
+    if (!t.done && t.date < today) { t.date = today; moved++; }
+  });
+  if (moved) setBoardTasks(bid, tArr); else saveTasks();
+  return moved;
+}
+function rolloverAllBoards() {
+  boards.forEach(b => rolloverBoard(b.id));
+}
 
 function showToast(msg, ms = 2000) {
   const t = document.getElementById('toast');
@@ -530,7 +674,6 @@ const now = new Date();
 const dateStr = now.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'short', year:'numeric' });
 document.getElementById('dateStrBoards').textContent = dateStr;
 document.getElementById('dateStrTasks').textContent  = dateStr;
-document.getElementById('dueDateInput').min = now.toISOString().split('T')[0];
 
 // ════════════════════════════════════════════
 // SCREEN SWITCHING
@@ -544,19 +687,25 @@ function showScreen(name) {
 // ════════════════════════════════════════════
 // COLOR SWATCHES
 // ════════════════════════════════════════════
-function renderSwatches() {
-  const wrap = document.getElementById('colorSwatches');
+function renderSwatches(containerId, picked, onPick) {
+  const wrap = document.getElementById(containerId);
   wrap.innerHTML = '';
   COLORS.forEach(c => {
     const s = document.createElement('div');
-    s.className = 'swatch' + (c === pickedColor ? ' picked' : '');
+    s.className = 'swatch' + (c === picked ? ' picked' : '');
     s.style.background = c;
     s.title = c;
-    s.addEventListener('click', () => { pickedColor = c; renderSwatches(); });
+    s.addEventListener('click', () => onPick(c));
     wrap.appendChild(s);
   });
 }
-renderSwatches();
+function renderNewBoardSwatches() {
+  renderSwatches('colorSwatches', pickedColor, c => { pickedColor = c; renderNewBoardSwatches(); });
+}
+function renderEditBoardSwatches() {
+  renderSwatches('editBoardColorSwatches', editPickedColor, c => { editPickedColor = c; renderEditBoardSwatches(); });
+}
+renderNewBoardSwatches();
 
 // ════════════════════════════════════════════
 // BOARDS RENDER
@@ -587,7 +736,10 @@ function renderBoards() {
     card.innerHTML = `
       <div class="board-card-header">
         <div class="board-card-name">${esc(board.name)}</div>
-        <button class="board-card-delete" data-bid="${board.id}" title="Excluir quadro">✕</button>
+        <div class="board-card-actions">
+          <button class="board-card-edit" data-bid="${board.id}" title="Editar quadro">✎</button>
+          <button class="board-card-delete" data-bid="${board.id}" title="Excluir quadro">✕</button>
+        </div>
       </div>
       <div class="board-card-meta">${total} tarefa${total !== 1 ? 's' : ''} · ${pct}% concluída${pct !== 1 ? 's' : ''}</div>
       <div class="board-card-progress-track">
@@ -603,6 +755,11 @@ function renderBoards() {
     card.addEventListener('click', e => {
       if (e.target.closest('.board-card-delete')) return;
       openBoard(board.id);
+    });
+
+    card.querySelector('.board-card-edit').addEventListener('click', e => {
+      e.stopPropagation();
+      openEditBoardModal(board.id);
     });
 
     card.querySelector('.board-card-delete').addEventListener('click', e => {
@@ -669,11 +826,54 @@ document.getElementById('modalConfirm').addEventListener('click', () => {
 });
 
 // ════════════════════════════════════════════
+// EDIT BOARD
+// ════════════════════════════════════════════
+function openEditBoardModal(bid) {
+  const board = boards.find(b => b.id === bid);
+  if (!board) return;
+  pendingEditBoardId = bid;
+  editPickedColor = board.color;
+  document.getElementById('editBoardNameInput').value = board.name;
+  renderEditBoardSwatches();
+  document.getElementById('editBoardOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('editBoardNameInput').focus(), 50);
+}
+function closeEditBoardModal() {
+  document.getElementById('editBoardOverlay').classList.remove('open');
+  pendingEditBoardId = null;
+}
+document.getElementById('editBoardCancel').addEventListener('click', closeEditBoardModal);
+document.getElementById('editBoardOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('editBoardOverlay')) closeEditBoardModal();
+});
+document.getElementById('editBoardNameInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('editBoardSave').click();
+});
+document.getElementById('editBoardSave').addEventListener('click', () => {
+  if (!pendingEditBoardId) return;
+  const board = boards.find(b => b.id === pendingEditBoardId);
+  if (!board) return;
+  const name = document.getElementById('editBoardNameInput').value.trim();
+  if (!name) { document.getElementById('editBoardNameInput').focus(); return; }
+  board.name  = name;
+  board.color = editPickedColor;
+  saveBoards();
+  renderBoards();
+  if (activeBoardId === board.id) {
+    document.getElementById('boardTitleText').textContent    = board.name;
+    document.getElementById('boardColorDot').style.background = board.color;
+  }
+  closeEditBoardModal();
+  showToast('✎ Quadro atualizado');
+});
+
+// ════════════════════════════════════════════
 // OPEN BOARD
 // ════════════════════════════════════════════
 function openBoard(bid) {
-  activeBoardId = bid;
-  taskFilter    = 'todas';
+  activeBoardId   = bid;
+  taskFilter      = 'todas';
+  currentViewDate = todayISO();
 
   const board = boards.find(b => b.id === bid);
   document.getElementById('boardTitleText').textContent    = board.name;
@@ -682,8 +882,10 @@ function openBoard(bid) {
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('.filter-btn[data-filter="todas"]').classList.add('active');
 
+  const moved = rolloverBoard(bid);
   renderTasks();
   showScreen('Tasks');
+  if (moved) showToast(`↻ ${moved} tarefa${moved !== 1 ? 's' : ''} não cumprida${moved !== 1 ? 's' : ''} migrada${moved !== 1 ? 's' : ''} para hoje`, 2600);
 }
 
 document.getElementById('backBtn').addEventListener('click', () => {
@@ -696,7 +898,7 @@ document.getElementById('backBtn').addEventListener('click', () => {
 // TASK STATS
 // ════════════════════════════════════════════
 function updateStats() {
-  const tArr  = getBoardTasks(activeBoardId);
+  const tArr  = getDayTasks();
   const done  = tArr.filter(t => t.done).length;
   const total = tArr.length;
   const pct   = total ? Math.round((done / total) * 100) : 0;
@@ -710,8 +912,11 @@ function updateStats() {
 // ════════════════════════════════════════════
 // TASK FILTER
 // ════════════════════════════════════════════
+function getDayTasks() {
+  return getBoardTasks(activeBoardId).filter(t => t.date === currentViewDate);
+}
 function getFiltered() {
-  const tArr = getBoardTasks(activeBoardId);
+  const tArr = getDayTasks();
   if (taskFilter === 'abertas') return tArr.filter(t => !t.done);
   if (taskFilter === 'feitas')  return tArr.filter(t => t.done);
   if (taskFilter === 'alta')    return tArr.filter(t => t.priority === 'alta');
@@ -721,11 +926,62 @@ function getFiltered() {
 }
 
 // ════════════════════════════════════════════
+// DAY NAV RENDER
+// ════════════════════════════════════════════
+function renderDayNav() {
+  const today   = todayISO();
+  const isToday = currentViewDate === today;
+  const isPast  = currentViewDate < today;
+
+  const dateEl = document.getElementById('dayNavDate');
+  const subEl  = document.getElementById('dayNavSub');
+  dateEl.classList.toggle('is-today', isToday);
+  dateEl.textContent = isToday
+    ? 'Hoje'
+    : (currentViewDate === addDaysISO(today, -1) ? 'Ontem'
+      : (currentViewDate === addDaysISO(today, 1) ? 'Amanhã' : fmtDayLabel(currentViewDate)));
+  subEl.textContent = fmtDayLabel(currentViewDate) + (isPast ? ' · histórico' : '');
+
+  document.getElementById('dayTodayBtn').disabled = isToday;
+
+  const pendingToday = getBoardTasks(activeBoardId).filter(t => !t.done && t.date === today).length;
+  const badge = document.getElementById('dayNavBadge');
+  if (!isToday && pendingToday) { badge.textContent = pendingToday; badge.classList.add('show'); }
+  else badge.classList.remove('show');
+
+  const inputArea = document.querySelector('.input-area');
+  inputArea.style.opacity        = isPast ? '.5' : '1';
+  inputArea.style.pointerEvents  = isPast ? 'none' : 'auto';
+  document.getElementById('addForLabel').textContent =
+    'Adicionar para: ' + (isToday ? 'hoje' : (currentViewDate === addDaysISO(today,1) ? 'amanhã' : fmtDayLabel(currentViewDate)));
+
+  document.getElementById('taskListHead').textContent = isPast ? 'Tarefas concluídas nesse dia' : 'Tarefas';
+}
+
+document.getElementById('dayPrevBtn').addEventListener('click', () => {
+  currentViewDate = addDaysISO(currentViewDate, -1);
+  renderTasks();
+});
+document.getElementById('dayNextBtn').addEventListener('click', () => {
+  currentViewDate = addDaysISO(currentViewDate, 1);
+  renderTasks();
+});
+document.getElementById('dayTodayBtn').addEventListener('click', () => {
+  currentViewDate = todayISO();
+  renderTasks();
+});
+document.getElementById('dayNavMid').addEventListener('click', () => {
+  currentViewDate = todayISO();
+  renderTasks();
+});
+
+// ════════════════════════════════════════════
 // RENDER TASKS
 // ════════════════════════════════════════════
 function renderTasks() {
   const list    = document.getElementById('taskList');
   const empty   = document.getElementById('emptyState');
+  renderDayNav();
   const visible = getFiltered();
   updateStats();
   list.innerHTML = '';
@@ -742,10 +998,6 @@ function renderTasks() {
     card.dataset.priority = task.priority;
     card.draggable        = true;
 
-    const dateTag = task.due
-      ? `<span class="tag tag-date">📅 ${fmtDate(task.due)}</span>`
-      : '';
-
     card.innerHTML = `
       <div class="check-wrap" title="Marcar como concluída">
         <span class="check-icon">✓</span>
@@ -754,10 +1006,10 @@ function renderTasks() {
         <div class="task-text">${esc(task.text)}</div>
         <div class="task-tags">
           <span class="tag tag-${task.priority}">${labels[task.priority]}</span>
-          ${dateTag}
         </div>
       </div>
       <div class="task-actions">
+        <button class="action-btn" data-action="edit" title="Editar">✎</button>
         <button class="action-btn" data-action="delete" title="Excluir">✕</button>
       </div>
     `;
@@ -765,6 +1017,10 @@ function renderTasks() {
     card.querySelector('.check-wrap').addEventListener('click', e => {
       e.stopPropagation();
       toggleDone(task.id);
+    });
+    card.querySelector('[data-action="edit"]').addEventListener('click', e => {
+      e.stopPropagation();
+      openEditTaskModal(task.id);
     });
     card.querySelector('[data-action="delete"]').addEventListener('click', e => {
       e.stopPropagation();
@@ -790,13 +1046,12 @@ function addTask() {
   tArr.unshift({
     id: Date.now(), text, done: false,
     priority: document.getElementById('prioritySelect').value,
-    due: document.getElementById('dueDateInput').value,
+    date: currentViewDate,
     created: Date.now()
   });
   setBoardTasks(activeBoardId, tArr);
   renderTasks();
   inp.value = '';
-  document.getElementById('dueDateInput').value = '';
   showToast('✔ Tarefa adicionada!');
 }
 
@@ -805,6 +1060,7 @@ function toggleDone(id) {
   const t    = tArr.find(t => t.id === id);
   if (!t) return;
   t.done = !t.done;
+  if (!t.done && t.date < todayISO()) t.date = todayISO(); // reaberta num dia passado: migra para hoje
   setBoardTasks(activeBoardId, tArr);
   renderTasks();
   showToast(t.done ? '✔ Concluída!' : '↩ Reaberta');
@@ -821,6 +1077,44 @@ function deleteTask(id, card) {
     showToast('🗑 Excluída');
   }, 250);
 }
+
+// ════════════════════════════════════════════
+// EDIT TASK
+// ════════════════════════════════════════════
+function openEditTaskModal(id) {
+  const task = getBoardTasks(activeBoardId).find(t => t.id === id);
+  if (!task) return;
+  pendingEditTaskId = id;
+  document.getElementById('editTaskTextInput').value = task.text;
+  document.getElementById('editTaskPrioritySelect').value = task.priority;
+  document.getElementById('editTaskOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('editTaskTextInput').focus(), 50);
+}
+function closeEditTaskModal() {
+  document.getElementById('editTaskOverlay').classList.remove('open');
+  pendingEditTaskId = null;
+}
+document.getElementById('editTaskCancel').addEventListener('click', closeEditTaskModal);
+document.getElementById('editTaskOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('editTaskOverlay')) closeEditTaskModal();
+});
+document.getElementById('editTaskTextInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('editTaskSave').click();
+});
+document.getElementById('editTaskSave').addEventListener('click', () => {
+  if (!pendingEditTaskId) return;
+  const tArr = getBoardTasks(activeBoardId);
+  const t = tArr.find(t => t.id === pendingEditTaskId);
+  if (!t) return;
+  const text = document.getElementById('editTaskTextInput').value.trim();
+  if (!text) { document.getElementById('editTaskTextInput').focus(); return; }
+  t.text     = text;
+  t.priority = document.getElementById('editTaskPrioritySelect').value;
+  setBoardTasks(activeBoardId, tArr);
+  renderTasks();
+  closeEditTaskModal();
+  showToast('✎ Tarefa atualizada');
+});
 
 // ════════════════════════════════════════════
 // DRAG & DROP
@@ -919,16 +1213,17 @@ if (!boards.length) {
     { id: 1002, name: 'Estudos',           color: '#7c3aed', created: Date.now() },
     { id: 1003, name: 'Projetos Pessoais', color: '#16a34a', created: Date.now() },
   ];
+  const hoje = todayISO();
   tasks = {
     1001: [
-      { id: 2001, text: 'Revisar relatório mensal',      done: false, priority: 'alta',  due: '', created: Date.now() },
-      { id: 2002, text: 'Responder e-mails pendentes',   done: true,  priority: 'media', due: '', created: Date.now() },
+      { id: 2001, text: 'Revisar relatório mensal',      done: false, priority: 'alta',  date: hoje, created: Date.now() },
+      { id: 2002, text: 'Responder e-mails pendentes',   done: true,  priority: 'media', date: hoje, created: Date.now() },
     ],
     1002: [
-      { id: 2003, text: 'Estudar JavaScript avançado',   done: false, priority: 'media', due: '', created: Date.now() },
+      { id: 2003, text: 'Estudar JavaScript avançado',   done: false, priority: 'media', date: hoje, created: Date.now() },
     ],
     1003: [
-      { id: 2004, text: 'Bem-vindo! Clique em um quadro para ver as tarefas.', done: false, priority: 'baixa', due: '', created: Date.now() },
+      { id: 2004, text: 'Bem-vindo! Clique em um quadro para ver as tarefas.', done: false, priority: 'baixa', date: hoje, created: Date.now() },
     ],
   };
   saveBoards(); saveTasks();
@@ -937,6 +1232,7 @@ if (!boards.length) {
 // ════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════
+rolloverAllBoards();
 renderBoards();
 </script>
 </body>
